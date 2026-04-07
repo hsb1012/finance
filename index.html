@@ -299,8 +299,7 @@ html, body { height:100%; background:#1a1a2e; }
 // ══════════════════════════════════════════════════
 //  SUPABASE INIT
 // ══════════════════════════════════════════════════
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 let currentUser = null;
 
