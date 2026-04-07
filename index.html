@@ -474,30 +474,9 @@ let addBankCur='TWD', addBankPeriod='monthly', addBankName='國泰世華';
 let addInvMkt='tw', addInvBroker='富邦證券', addMortBank='玉山銀行';
 let invTargetAcc=0, lookedUp=null;
 
-// seed with sample data if DB is empty
+// No default seed data - start fresh
 function seedIfEmpty() {
-  if (bankAccounts.length === 0) {
-    bankAccounts.push(
-      {bank:'國泰世華',cur:'TWD',amount:1240000,rate:1.2,period:'monthly'},
-      {bank:'中信銀行',cur:'USD',amount:28500,rate:4.5,period:'monthly'},
-      {bank:'郵局',cur:'JPY',amount:4200000,rate:0.02,period:'monthly'},
-    );
-  }
-  if (invAccounts.length === 0) {
-    invAccounts.push(
-      {id:'local_tw',name:'富邦證券',market:'tw',cur:'TWD',cash:0,stocks:[
-        {id:'local_s1',ticker:'2330',name:'台積電',shares:200,cost:480,price:520,chg:2.1},
-        {id:'local_s2',ticker:'0050',name:'元大台灣50',shares:500,cost:115,price:121.6,chg:1.2},
-      ]},
-      {id:'local_us',name:'IB 美股',market:'us',cur:'USD',cash:500,stocks:[
-        {id:'local_s3',ticker:'AAPL',name:'Apple Inc.',shares:50,cost:165,price:183.6,chg:1.4},
-        {id:'local_s4',ticker:'VOO',name:'Vanguard S&P500',shares:30,cost:420,price:504,chg:0.8},
-      ]},
-    );
-  }
-  if (mortgages.length === 0) {
-    mortgages.push({name:'板橋自宅',bank:'玉山銀行',total:5200000,paid:91,terms:240,rate:1.85});
-  }
+  // App starts empty, user adds their own data
 }
 
 const tickerDB = {
@@ -651,6 +630,42 @@ function buildAppShell() {
             </div>
             <button class="submit-btn gold" onclick="submitBank()">儲存帳戶</button>
             <div style="height:10px"></div>
+          </div>
+        </div>
+        <!-- Edit bank subscreen -->
+        <div class="subscreen hidden" id="sub-bank-edit">
+          <div class="statusbar" style="background:var(--bg)"><span class="st">9:41</span><span class="si">●●● 🔋</span></div>
+          <div class="scroll">
+            <div class="nav-hdr"><div class="nav-left"><div class="back-btn" onclick="popSub('sub-bank-edit')">←</div><span class="nav-title">編輯銀行帳戶</span></div></div>
+            <div class="form-sec"><div class="form-lbl">銀行名稱</div><input class="form-input" id="edit-bank-name" placeholder="銀行名稱"></div>
+            <div class="form-sec"><div class="form-lbl">幣別</div><div class="opts-row">
+              <div class="opt-btn sel-gold" id="edit-bcur-twd" onclick="selEditBankCur('TWD',this)">🇹🇼 TWD</div>
+              <div class="opt-btn" id="edit-bcur-usd" onclick="selEditBankCur('USD',this)">🇺🇸 USD</div>
+              <div class="opt-btn" id="edit-bcur-jpy" onclick="selEditBankCur('JPY',this)">🇯🇵 JPY</div>
+            </div></div>
+            <div class="form-sec"><div class="form-lbl">存款金額</div>
+              <div style="background:var(--surface);border:1.5px solid rgba(200,169,110,0.35);border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:8px">
+                <span style="font-size:15px;color:var(--text2)" id="edit-bank-cur-prefix">NT$</span>
+                <input style="flex:1;background:none;border:none;outline:none;font-size:20px;font-weight:600;color:var(--text);font-family:inherit;min-width:0" id="edit-bf-amount" type="number" oninput="calcEditBankPreview()">
+              </div>
+            </div>
+            <div class="form-sec"><div class="form-lbl">年利率（%）</div><div class="form-row"><input class="form-input" id="edit-bf-rate" type="number" step="0.01" oninput="calcEditBankPreview()"><div class="input-unit">%</div></div></div>
+            <div class="form-sec"><div class="form-lbl">計息週期</div><div class="opts-row" id="edit-period-opts">
+              <div class="opt-btn sel-gold" onclick="selEditPeriod('monthly',this)">每月</div>
+              <div class="opt-btn" onclick="selEditPeriod('quarterly',this)">每季</div>
+              <div class="opt-btn" onclick="selEditPeriod('halfyear',this)">每半年</div>
+              <div class="opt-btn" onclick="selEditPeriod('yearly',this)">每年</div>
+            </div></div>
+            <div class="preview-box gold">
+              <div class="pb-title">💡 利息試算</div>
+              <div class="pb-row"><span class="pb-lbl" id="edit-bank-period-lbl">月利息</span><span class="pb-val" id="edit-bp-period" style="color:var(--green)">—</span></div>
+              <div class="pb-row"><span class="pb-lbl">年利息</span><span class="pb-val" id="edit-bp-year" style="color:var(--green)">—</span></div>
+              <div class="pb-divider"></div>
+              <div class="pb-row"><span class="pb-lbl">5年本息合計</span><span class="pb-val" id="edit-bp-5y" style="color:var(--gold)">—</span></div>
+            </div>
+            <button class="submit-btn gold" onclick="saveEditBank()">儲存修改</button>
+            <div style="margin:10px 18px 0;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:14px;padding:14px 16px;text-align:center;cursor:pointer;font-size:14px;color:var(--red)" onclick="confirmDeleteBank()">🗑 刪除此帳戶</div>
+            <div style="height:30px"></div>
           </div>
         </div>
         <div class="bottom-nav" id="nav-bank"></div>
@@ -980,7 +995,7 @@ function renderBank(){
     const twd=bankTWD(b),mi=b.amount*b.rate/100/12;
     const c=cols[i%3];
     const card=document.createElement('div');card.className='exp-card';
-    card.innerHTML=`<div class="exp-hdr" onclick="this.nextElementSibling.classList.toggle('open')"><div class="exp-icon" style="background:${c.bg};border:1px solid ${c.bo}">🏦</div><div class="exp-info"><div class="exp-name">${b.bank} <span class="chip">${b.cur}</span></div><div class="exp-sub">年利率 ${b.rate}% · ${{monthly:'月',quarterly:'季',halfyear:'半年',yearly:'年'}[b.period]}計息</div></div><div class="exp-amt"><div class="exp-val">${fmtCur(b.amount,b.cur)}</div><div class="exp-twd" style="color:var(--green)">月息 +${fmtCur(mi,b.cur)}</div></div></div><div class="exp-detail"><div class="exp-detail-inner"><div class="dr"><span class="dl">折合台幣</span><span class="dv gold">${fmtN(twd)}</span></div><div class="dr"><span class="dl">月利息</span><span class="dv pos">+${fmtCur(mi,b.cur)}</span></div><div class="dr"><span class="dl">年利息</span><span class="dv pos">+${fmtCur(b.amount*b.rate/100,b.cur)}</span></div><div class="dr"><span class="dl">5年本息</span><span class="dv gold">${fmtCur(b.amount+b.amount*b.rate/100*5,b.cur)}</span></div></div></div>`;
+    card.innerHTML=`<div class="exp-hdr" onclick="this.nextElementSibling.classList.toggle('open')"><div class="exp-icon" style="background:${c.bg};border:1px solid ${c.bo}">🏦</div><div class="exp-info"><div class="exp-name">${b.bank} <span class="chip">${b.cur}</span></div><div class="exp-sub">年利率 ${b.rate}% · ${{monthly:'月',quarterly:'季',halfyear:'半年',yearly:'年'}[b.period]}計息</div></div><div class="exp-amt"><div class="exp-val">${fmtCur(b.amount,b.cur)}</div><div class="exp-twd" style="color:var(--green)">月息 +${fmtCur(mi,b.cur)}</div></div></div><div class="exp-detail"><div class="exp-detail-inner"><div class="dr"><span class="dl">折合台幣</span><span class="dv gold">${fmtN(twd)}</span></div><div class="dr"><span class="dl">月利息</span><span class="dv pos">+${fmtCur(mi,b.cur)}</span></div><div class="dr"><span class="dl">年利息</span><span class="dv pos">+${fmtCur(b.amount*b.rate/100,b.cur)}</span></div><div class="dr"><span class="dl">5年本息</span><span class="dv gold">${fmtCur(b.amount+b.amount*b.rate/100*5,b.cur)}</span></div><div class="dr" style="margin-top:6px"><span></span><span class="dv" style="color:var(--blue);cursor:pointer" onclick="openEditBank(${i})">✏️ 編輯 / 刪除</span></div></div></div>`;
     list.appendChild(card);
   });
   const totalMI=bankAccounts.reduce((s,b)=>s+toTWD(b.amount*b.rate/100/12,b.cur),0);
@@ -997,6 +1012,79 @@ function renderBank(){
     bp.appendChild(el);
   });
 }
+let editBankIdx = -1, editBankCur = 'TWD', editBankPeriod = 'monthly';
+
+function openEditBank(idx) {
+  editBankIdx = idx;
+  const b = bankAccounts[idx];
+  editBankCur = b.cur;
+  editBankPeriod = b.period || 'monthly';
+  document.getElementById('edit-bank-name').value = b.bank;
+  document.getElementById('edit-bf-amount').value = b.amount;
+  document.getElementById('edit-bf-rate').value = b.rate;
+  document.getElementById('edit-bank-cur-prefix').textContent = b.cur==='TWD'?'NT$':b.cur==='USD'?'USD':'JPY';
+  ['TWD','USD','JPY'].forEach(c=>document.getElementById('edit-bcur-'+c.toLowerCase()).classList.remove('sel-gold'));
+  document.getElementById('edit-bcur-'+b.cur.toLowerCase()).classList.add('sel-gold');
+  document.querySelectorAll('#edit-period-opts .opt-btn').forEach(btn=>btn.classList.remove('sel-gold'));
+  const pmap={monthly:0,quarterly:1,halfyear:2,yearly:3};
+  document.querySelectorAll('#edit-period-opts .opt-btn')[pmap[editBankPeriod]||0].classList.add('sel-gold');
+  document.getElementById('edit-bank-period-lbl').textContent={monthly:'月利息',quarterly:'季利息',halfyear:'半年利息',yearly:'年利息'}[editBankPeriod];
+  calcEditBankPreview();
+  pushSub('sub-bank-edit');
+}
+
+function selEditBankCur(cur,el) {
+  editBankCur=cur;
+  ['TWD','USD','JPY'].forEach(c=>document.getElementById('edit-bcur-'+c.toLowerCase()).classList.remove('sel-gold'));
+  el.classList.add('sel-gold');
+  document.getElementById('edit-bank-cur-prefix').textContent=cur==='TWD'?'NT$':cur==='USD'?'USD':'JPY';
+  calcEditBankPreview();
+}
+
+function selEditPeriod(p,el) {
+  editBankPeriod=p;
+  document.querySelectorAll('#edit-period-opts .opt-btn').forEach(b=>b.classList.remove('sel-gold'));
+  el.classList.add('sel-gold');
+  document.getElementById('edit-bank-period-lbl').textContent={monthly:'月利息',quarterly:'季利息',halfyear:'半年利息',yearly:'年利息'}[p];
+  calcEditBankPreview();
+}
+
+function calcEditBankPreview() {
+  const amt=parseFloat(document.getElementById('edit-bf-amount').value)||0;
+  const rate=parseFloat(document.getElementById('edit-bf-rate').value)||0;
+  if(!amt||!rate){['edit-bp-period','edit-bp-year','edit-bp-5y'].forEach(id=>document.getElementById(id).textContent='—');return}
+  const yi=amt*rate/100,pd={monthly:12,quarterly:4,halfyear:2,yearly:1}[editBankPeriod];
+  document.getElementById('edit-bp-period').textContent='+'+fmtCur(yi/pd,editBankCur);
+  document.getElementById('edit-bp-year').textContent='+'+fmtCur(yi,editBankCur);
+  document.getElementById('edit-bp-5y').textContent=fmtCur(amt+yi*5,editBankCur);
+}
+
+async function saveEditBank() {
+  if(editBankIdx<0)return;
+  const name=document.getElementById('edit-bank-name').value.trim();
+  const amt=parseFloat(document.getElementById('edit-bf-amount').value)||0;
+  const rate=parseFloat(document.getElementById('edit-bf-rate').value)||0;
+  if(!name||!amt||!rate){toast('請填寫完整資料');return}
+  const b=bankAccounts[editBankIdx];
+  b.bank=name; b.cur=editBankCur; b.amount=amt; b.rate=rate; b.period=editBankPeriod;
+  await upsertBank(b);
+  popSub('sub-bank-edit');
+  renderBank(); renderHome();
+  toast('帳戶已更新 ✓');
+}
+
+async function confirmDeleteBank() {
+  if(editBankIdx<0)return;
+  const b=bankAccounts[editBankIdx];
+  if(!confirm('確定要刪除「'+b.bank+'」帳戶嗎？'))return;
+  if(b.id) await deleteBank(b.id);
+  bankAccounts.splice(editBankIdx,1);
+  editBankIdx=-1;
+  popSub('sub-bank-edit');
+  renderBank(); renderHome();
+  toast('帳戶已刪除');
+}
+
 function selBankCur(cur,el){addBankCur=cur;['TWD','USD','JPY'].forEach(c=>document.getElementById('bcur-'+c.toLowerCase()).classList.remove('sel-gold'));el.classList.add('sel-gold');document.getElementById('bank-cur-prefix').textContent=cur==='TWD'?'NT$':cur==='USD'?'USD':'JPY';calcBankPreview()}
 function selPeriod(p,el){addBankPeriod=p;document.querySelectorAll('#period-opts .opt-btn').forEach(b=>b.classList.remove('sel-gold'));el.classList.add('sel-gold');document.getElementById('bank-period-lbl').textContent={monthly:'月利息',quarterly:'季利息',halfyear:'半年利息',yearly:'年利息'}[p];calcBankPreview()}
 function calcBankPreview(){const amt=parseFloat(document.getElementById('bf-amount').value)||0,rate=parseFloat(document.getElementById('bf-rate').value)||0;if(!amt||!rate){['bp-period','bp-year','bp-5y'].forEach(id=>document.getElementById(id).textContent='—');return}const yi=amt*rate/100,pd={monthly:12,quarterly:4,halfyear:2,yearly:1}[addBankPeriod];document.getElementById('bp-period').textContent='+'+fmtCur(yi/pd,addBankCur);document.getElementById('bp-year').textContent='+'+fmtCur(yi,addBankCur);document.getElementById('bp-5y').textContent=fmtCur(amt+yi*5,addBankCur)}
