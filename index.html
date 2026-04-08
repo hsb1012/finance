@@ -502,7 +502,9 @@ async function initApp() {
   seedIfEmpty();
   renderAllNavs();
   renderAll();
-  // Try to sync from DB
+  // Fetch real exchange rates first
+  await fetchRealRates();
+  // Then sync data from DB
   await syncDown();
   renderAll();
 }
@@ -955,7 +957,7 @@ function renderHome(){
     const twd=bankTWD(b),mi=b.amount*b.rate/100/12;
     const c=bcols[i%3];
     const card=document.createElement('div');card.className='exp-card';
-    card.innerHTML=`<div class="exp-hdr" onclick="this.nextElementSibling.classList.toggle('open')"><div class="exp-icon" style="background:${c.bg};border:1px solid ${c.bo}">🏦</div><div class="exp-info"><div class="exp-name">${b.bank} <span class="chip">${b.cur}</span></div><div class="exp-sub">年利率 ${b.rate}%</div></div><div class="exp-amt"><div class="exp-val">${fmtCur(b.amount,b.cur)}</div><div class="exp-twd" style="color:var(--green)">月息 +${fmtCur(mi,b.cur)}</div></div></div><div class="exp-detail"><div class="exp-detail-inner"><div class="dr"><span class="dl">折合台幣</span><span class="dv gold">${fmtN(twd)}</span></div><div class="dr"><span class="dl">月利息</span><span class="dv pos">+${fmtCur(mi,b.cur)}</span></div><div class="dr"><span class="dl">年利息</span><span class="dv pos">+${fmtCur(b.amount*b.rate/100,b.cur)}</span></div></div></div>`;
+    card.innerHTML=`<div class="exp-hdr" onclick="this.nextElementSibling.classList.toggle('open')"><div class="exp-icon" style="background:${c.bg};border:1px solid ${c.bo}">🏦</div><div class="exp-info"><div class="exp-name">${b.bank} <span class="chip">${b.cur}</span></div><div class="exp-sub">年利率 ${b.rate}% · ${{monthly:'月',quarterly:'季',halfyear:'半年',yearly:'年'}[b.period]||'月'}計息</div></div><div class="exp-amt"><div class="exp-val">${fmtCur(b.amount,b.cur)}</div><div class="exp-twd" style="color:var(--green)">≈ ${fmtN(twd)}</div></div></div><div class="exp-detail open"><div class="exp-detail-inner"><div class="dr"><span class="dl">存款金額</span><span class="dv">${fmtCur(b.amount,b.cur)}</span></div><div class="dr"><span class="dl">折合台幣</span><span class="dv gold">${fmtN(twd)}</span></div><div class="dr"><span class="dl">月利息</span><span class="dv pos">+${fmtCur(mi,b.cur)}</span></div><div class="dr"><span class="dl">年利息</span><span class="dv pos">+${fmtCur(b.amount*b.rate/100,b.cur)}</span></div></div></div>`;
     bl.appendChild(card);
   });
 
@@ -1182,8 +1184,49 @@ function calcMortPreview(){const total=parseFloat(document.getElementById('mf-to
 async function submitMort(){const name=document.getElementById('mf-name').value.trim()||'新房產',total=parseFloat(document.getElementById('mf-total').value)||0,paid=parseInt(document.getElementById('mf-paid').value)||0,terms=parseInt(document.getElementById('mf-terms').value)||0,rate=parseFloat(document.getElementById('mf-rate').value)||0;if(!total||!terms||!rate){toast('請填寫完整貸款資訊');return}const m={name,bank:addMortBank,total,paid,terms,rate};mortgages.push(m);await upsertMort(m);activeMort=mortgages.length-1;amortShown=6;popSub('sub-mort-add');renderMort();renderHome();toast('房貸已儲存至雲端 ✓')}
 
 // ── REFRESH ──
-function refreshAll(){const btn=document.querySelector('#pg-home .refresh-btn');if(btn)btn.textContent='更新中…';setTimeout(()=>{const du=(Math.random()-.5)*.4,dj=(Math.random()-.5)*.006;usdRate=parseFloat((usdRate+du).toFixed(2));jpyRate=parseFloat((jpyRate+dj).toFixed(3));const ru=document.getElementById('r-usd');if(ru)ru.textContent=usdRate.toFixed(2);const rj=document.getElementById('r-jpy');if(rj)rj.textContent=jpyRate.toFixed(3);const rju=document.getElementById('r-jpyusd');if(rju)rju.textContent=(usdRate/jpyRate/100).toFixed(1);const rcu=document.getElementById('rc-usd');if(rcu){rcu.textContent=(du>=0?'▲ ':'▼ ')+Math.abs(du).toFixed(2);rcu.style.color=du>=0?'var(--green)':'var(--red)'}invAccounts.forEach(a=>a.stocks.forEach(st=>{const d=(Math.random()-.48)*st.price*.02;st.price=parseFloat((st.price+d).toFixed(2));st.chg=parseFloat(((Math.random()-.48)*3).toFixed(2))}));const now=new Date(),ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');const hut=document.getElementById('home-update-time');if(hut)hut.textContent='匯率已更新・'+ts;if(btn)btn.textContent='立即刷新';renderAll();toast('✓ 匯率與行情已更新')},800)}
-function refreshPrices(){const btn=document.querySelector('#pg-inv .refresh-btn');if(btn)btn.textContent='更新中…';setTimeout(()=>{invAccounts.forEach(a=>a.stocks.forEach(st=>{const d=(Math.random()-.48)*st.price*.025;st.price=parseFloat((st.price+d).toFixed(2));st.chg=parseFloat(((Math.random()-.48)*4).toFixed(2));if(tickerDB[st.ticker])tickerDB[st.ticker].price=st.price}));usdRate=parseFloat((usdRate+(Math.random()-.5)*.25).toFixed(2));const now=new Date(),ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');const iut=document.getElementById('inv-update-time');if(iut)iut.textContent='行情已更新・'+ts;if(btn)btn.textContent='刷新行情';renderInv();toast('✓ 股價與匯率已更新')},800)}
+async function fetchRealRates() {
+  try {
+    // Frankfurter API - free, no key needed
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=TWD,JPY');
+    const data = await res.json();
+    const prevUsd = usdRate, prevJpy = jpyRate;
+    usdRate = parseFloat(data.rates.TWD.toFixed(2));
+    const usdJpy = data.rates.JPY;
+    jpyRate = parseFloat((usdRate / usdJpy).toFixed(4));
+    const du = usdRate - prevUsd, dj = jpyRate - prevJpy;
+    const ru=document.getElementById('r-usd');if(ru)ru.textContent=usdRate.toFixed(2);
+    const rj=document.getElementById('r-jpy');if(rj)rj.textContent=jpyRate.toFixed(3);
+    const rju=document.getElementById('r-jpyusd');if(rju)rju.textContent=usdJpy.toFixed(1);
+    const rcu=document.getElementById('rc-usd');if(rcu){rcu.textContent=(du>=0?'▲ ':'▼ ')+Math.abs(du).toFixed(2);rcu.style.color=du>=0?'var(--green)':'var(--red)'}
+    const rcj=document.getElementById('rc-jpy');if(rcj){rcj.textContent=(dj>=0?'▲ ':'▼ ')+Math.abs(dj).toFixed(4);rcj.style.color=dj>=0?'var(--green)':'var(--red)'}
+    const rcju=document.getElementById('rc-jpyusd');if(rcju){rcju.style.color='var(--text2)';rcju.textContent='即時'}
+    const ibu=document.getElementById('inv-badge-usd');if(ibu)ibu.textContent='USD/TWD '+usdRate.toFixed(2);
+    const now=new Date(),ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+    const hut=document.getElementById('home-update-time');if(hut)hut.textContent='即時匯率已更新・'+ts;
+    const iut=document.getElementById('inv-update-time');if(iut)iut.textContent='即時匯率已更新・'+ts;
+    return true;
+  } catch(e) {
+    console.warn('Rate fetch failed, using cached rates', e);
+    return false;
+  }
+}
+
+async function refreshAll(){
+  const btn=document.querySelector('#pg-home .refresh-btn');
+  if(btn)btn.textContent='更新中…';
+  await fetchRealRates();
+  renderAll();
+  if(btn)btn.textContent='立即刷新';
+  toast('✓ 匯率已更新（即時資料）');
+}
+async function refreshPrices(){
+  const btn=document.querySelector('#pg-inv .refresh-btn');
+  if(btn)btn.textContent='更新中…';
+  await fetchRealRates();
+  renderInv();
+  if(btn)btn.textContent='刷新行情';
+  toast('✓ 匯率已更新（即時資料）');
+}
 
 // ── EXPORT / IMPORT ──
 function exportData(){const data={bank:bankAccounts,inv:invAccounts,mort:mortgages,exported:new Date().toISOString()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='asset_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();toast('備份已匯出')}
