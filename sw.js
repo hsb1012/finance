@@ -20,7 +20,9 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   // 只快取 GET，API 請求走網路優先
   if (e.request.method !== 'GET') return;
-  if (e.request.url.includes('supabase.co')) return; // Supabase 永遠走網路
+  if (e.request.url.includes('supabase.co')) return; // Supabase 走網路
+  if (e.request.url.includes('er-api.com')) return; // 匯率 API 走網路
+  if (e.request.url.includes('frankfurter')) return; // 匯率 API 走網路
 
   e.respondWith(
     caches.match(e.request).then(cached => {

@@ -469,11 +469,23 @@ async function upsertMort(m) {
 function setSyncState(state) {
   const dot = document.getElementById('sync-dot');
   const txt = document.getElementById('sync-txt');
+  const bar = document.getElementById('sync-bar');
   if (!dot || !txt) return;
   dot.className = 'sync-dot' + (state==='syncing' ? ' syncing' : '');
-  if (state==='ok')      txt.textContent = '資料已同步・'+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
-  if (state==='syncing') txt.textContent = '同步中…';
-  if (state==='error')   { txt.textContent = '同步失敗・點右側重試'; dot.style.background='#f87171'; }
+  if (state==='ok') {
+    txt.textContent = '雲端同步成功・'+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+    dot.style.background='var(--green)';
+    if(bar){bar.style.background='rgba(110,231,183,0.08)';bar.style.borderBottom='1px solid rgba(110,231,183,0.15)'}
+  }
+  if (state==='syncing') {
+    txt.textContent = '同步中…';
+    dot.style.background='var(--blue)';
+  }
+  if (state==='error') {
+    txt.textContent = '同步失敗';
+    dot.style.background='#f87171';
+    if(bar){bar.style.background='rgba(248,113,113,0.08)';bar.style.borderBottom='1px solid rgba(248,113,113,0.2)'}
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -526,7 +538,7 @@ function buildAppShell() {
     <!-- Sync bar -->
     <div class="sync-bar" id="sync-bar" style="flex-shrink:0">
       <div class="sync-info"><div class="sync-dot" id="sync-dot"></div><span id="sync-txt">資料已同步</span></div>
-      <span style="font-size:11px;color:var(--blue);cursor:pointer" onclick="syncDown()">立即同步</span>
+      <span style="font-size:13px;color:#000;background:var(--blue);padding:6px 14px;border-radius:10px;cursor:pointer;font-weight:600" onclick="syncDown()">↻ 同步</span>
     </div>
 
     <!-- Pages container -->
@@ -946,17 +958,17 @@ function renderAll(){
 
 // ── HOME ──
 function renderHome(){
-  const bankTWD=bankTotalTWD(), invTWD=invTotalTWD(), mortTWD=mortTotalRemain();
-  const total=bankTWD+invTWD, net=total-mortTWD;
+  const bkTWD=bankTotalTWD(), invTWD=invTotalTWD(), mortTWD=mortTotalRemain();
+  const total=bkTWD+invTWD, net=total-mortTWD;
   const hw=document.getElementById('hw-total'); if(hw) hw.textContent=fmtN(total);
   const hn=document.getElementById('hw-net'); if(hn) hn.textContent=fmtN(net);
-  const hbt=document.getElementById('home-bank-total'); if(hbt) hbt.textContent=fmtN(bankTWD);
+  const hbt=document.getElementById('home-bank-total'); if(hbt) hbt.textContent=fmtN(bkTWD);
   const hit=document.getElementById('home-inv-total'); if(hit) hit.textContent=fmtN(invTWD);
   const hmt=document.getElementById('home-mort-total'); if(hmt) hmt.textContent='-'+fmtN(mortTWD);
   // donut
-  const gross=bankTWD+invTWD+Math.max(0,net-invTWD-bankTWD)||1;
+  const gross=bkTWD+invTWD+Math.max(0,net-invTWD-bkTWD)||1;
   const circ=2*Math.PI*30;
-  const bPct=bankTWD/gross, iPct=invTWD/gross, pPct=Math.max(0,net-bankTWD-invTWD)/gross;
+  const bPct=bkTWD/gross, iPct=invTWD/gross, pPct=Math.max(0,net-bkTWD-invTWD)/gross;
   const dbp=document.getElementById('donut-bank-pct');if(dbp)dbp.textContent=Math.round(bPct*100)+'%';
   const dip=document.getElementById('donut-inv-pct');if(dip)dip.textContent=Math.round(iPct*100)+'%';
   const dpp=document.getElementById('donut-prop-pct');if(dpp)dpp.textContent=Math.round(pPct*100)+'%';
@@ -1198,12 +1210,14 @@ async function submitMort(){const name=document.getElementById('mf-name').value.
 // ── REFRESH ──
 async function fetchRealRates() {
   try {
-    // Frankfurter API - free, no key needed
-    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=TWD,JPY');
+    // Use exchangerate-api (supports CORS)
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (data.result !== 'success') throw new Error('API error');
     const prevUsd = usdRate, prevJpy = jpyRate;
-    usdRate = parseFloat(data.rates.TWD.toFixed(2));
     const usdJpy = data.rates.JPY;
+    usdRate = parseFloat(data.rates.TWD.toFixed(2));
     jpyRate = parseFloat((usdRate / usdJpy).toFixed(4));
     const du = usdRate - prevUsd, dj = jpyRate - prevJpy;
     const ru=document.getElementById('r-usd');if(ru)ru.textContent=usdRate.toFixed(2);
@@ -1211,7 +1225,6 @@ async function fetchRealRates() {
     const rju=document.getElementById('r-jpyusd');if(rju)rju.textContent=usdJpy.toFixed(1);
     const rcu=document.getElementById('rc-usd');if(rcu){rcu.textContent=(du>=0?'▲ ':'▼ ')+Math.abs(du).toFixed(2);rcu.style.color=du>=0?'var(--green)':'var(--red)'}
     const rcj=document.getElementById('rc-jpy');if(rcj){rcj.textContent=(dj>=0?'▲ ':'▼ ')+Math.abs(dj).toFixed(4);rcj.style.color=dj>=0?'var(--green)':'var(--red)'}
-    const rcju=document.getElementById('rc-jpyusd');if(rcju){rcju.style.color='var(--text2)';rcju.textContent='即時'}
     const ibu=document.getElementById('inv-badge-usd');if(ibu)ibu.textContent='USD/TWD '+usdRate.toFixed(2);
     const now=new Date(),ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
     const hut=document.getElementById('home-update-time');if(hut)hut.textContent='即時匯率已更新・'+ts;
